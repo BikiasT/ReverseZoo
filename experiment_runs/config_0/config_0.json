@@ -1,0 +1,15 @@
+{
+    "holdout_species": ["monkey", "mouse", "rat", "human"],
+    "model_pth": "experiment_runs/config_0/model.pt",
+    "model_architecture": "transformer",
+    "embed_dim": 64,
+    "num_heads": 4,
+    "transformer_dim": 128,
+    "num_layers": 1,
+    "num_epochs": 10,
+    "batch_size": 32,
+    "lr": 0.001,
+    "vocab_size": 21,
+    "device": "cpu",
+    "random_seed": 42
+}

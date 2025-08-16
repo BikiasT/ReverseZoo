@@ -1,0 +1,22 @@
+{
+  "mouse": 0,
+  "ihbat": 1,
+  "cattle": 2,
+  "human": 3,
+  "willow": 4,
+  "tit": 5,
+  "ostrich": 6,
+  "dog": 7,
+  "cat": 8,
+  "monkey": 9,
+  "horse": 10,
+  "owl": 11,
+  "boar": 12,
+  "mink": 13,
+  "possum": 14,
+  "pangolin": 15,
+  "chicken": 16,
+  "human_new": 17,
+  "civet": 18,
+  "rat": 19
+}

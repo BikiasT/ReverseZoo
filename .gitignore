@@ -210,3 +210,7 @@ __marimo__/
 *.csv
 *.png
 .png
+.pt
+*.pt
+*.npy
+.npy

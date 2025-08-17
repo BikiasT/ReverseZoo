@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-
+from pathlib import Path
 # UMAP + clustering
 import umap  # pip install umap-learn
 from sklearn.cluster import KMeans, DBSCAN
@@ -203,3 +203,51 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+    # ========== Configuration ==========
+    EMBEDDING_FILE = Path("embeddings/x_embeddings_56.pt")
+    LABELS_FILE = None  # Optional: set to a .pt file with shape [N] for coloring
+    SAVE_FIGURE = True
+    FIGURE_PATH = Path("embeddings/umap_plot.png")
+    # ===================================
+
+    # Load embeddings: [N, L, D]
+    embeddings = torch.load(EMBEDDING_FILE)  # e.g. [100, 203, 1152]
+    print(f"Loaded embedding tensor: {embeddings.shape}")
+
+ 
+
+    # Convert to numpy
+    embeddings_np = embeddings.cpu().numpy()
+
+    # Optional: Load labels
+    if LABELS_FILE is not None:
+        labels = torch.load(LABELS_FILE).cpu().numpy()
+    else:
+        labels = None
+
+    # Fit UMAP
+    reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='cosine', random_state=42)
+    embedding_2d = reducer.fit_transform(embeddings_np)
+
+    # Plot
+    plt.figure(figsize=(8, 6))
+    if labels is not None:
+        scatter = plt.scatter(embedding_2d[:, 0], embedding_2d[:, 1], c=labels, cmap="Spectral", s=20)
+        plt.colorbar(scatter, label="Label")
+    else:
+        plt.scatter(embedding_2d[:, 0], embedding_2d[:, 1], s=20, color='blue')
+
+    plt.title("UMAP projection of ESMC embeddings (mean pooled)")
+    plt.xlabel("UMAP-1")
+    plt.ylabel("UMAP-2")
+    plt.tight_layout()
+
+    # Save or show
+    if SAVE_FIGURE:
+        FIGURE_PATH.parent.mkdir(exist_ok=True)
+        plt.savefig(FIGURE_PATH, dpi=300)
+        print(f"Plot saved to {FIGURE_PATH}")
+    else:
+        plt.show()

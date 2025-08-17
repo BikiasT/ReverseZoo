@@ -1,20 +1,19 @@
 import torch
-from typing import Callable, Literal
+from typing import Literal
 from esm.models.esmc import ESMC
 from esm.sdk.api import ESMProtein, LogitsConfig
 import time
 from tqdm import tqdm
 from pathlib import Path
+
 # Amino acid vocabulary
 AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
 index_to_aa = {i: aa for i, aa in enumerate(AMINO_ACIDS)}
 unk_index = len(AMINO_ACIDS)
 
-
 def decode_fn(indices: list[int]) -> str:
     """Convert list of indices to amino acid string."""
     return "".join([index_to_aa[i] for i in indices if i in index_to_aa])
-
 
 def embed_sequences(
     categorical_seqs: torch.Tensor,
@@ -23,21 +22,12 @@ def embed_sequences(
     dtype: Literal["float32", "float64"] = "float32",
 ) -> torch.Tensor:
     """
-    Embed categorically encoded protein sequences using ESMC model from Meta's esm SDK.
-
-    Args:
-        categorical_seqs (torch.Tensor): Tensor of shape (N, L) with categorical indices.
-        model_name (str): Name of the ESMC model (e.g., "esmc_300m").
-        device (str): "cpu" or "cuda".
-        dtype (str): Output tensor dtype ("float32" or "float64").
-
-    Returns:
-        torch.Tensor: Tensor of shape (N, D) with embedded sequences.
+    Embed sequences using ESMC and return mean-pooled per-sequence embeddings [N, D]
     """
     assert dtype in ["float32", "float64"], "dtype must be 'float32' or 'float64'"
     assert device in ["cpu", "cuda"], "device must be 'cpu' or 'cuda'"
 
-    # Load ESMC model and move to device
+    # Load ESMC model
     client = ESMC.from_pretrained(model_name).to(device)
 
     embeddings = []
@@ -49,28 +39,31 @@ def embed_sequences(
         logits_output = client.logits(
             protein_tensor, LogitsConfig(sequence=True, return_embeddings=True)
         )
-        emb = logits_output.embeddings  # Tensor [1, D]
-        embeddings.append(emb.squeeze(0))  # Shape: [D]
+        # logits_output.embeddings: [1, L, D]
+        emb = logits_output.embeddings.mean(dim=1).squeeze(0)  # [D]
+        embeddings.append(emb)
 
-    result = torch.stack(embeddings)  # Shape: [N, D]
-
-    # Convert dtype
+    result = torch.stack(embeddings)  # [N, D]
     result = result.to(torch.float64 if dtype == "float64" else torch.float32)
-
     return result.to(device)
 
+# ========== Main ==========
+
 if __name__ == "__main__":
-    LOG_FILE = "embedding_log.txt"
-    NUM_SEQUENCES = 100
+    # Configuration
+    EMBEDDING_DIR = Path("embeddings")
+    EMBEDDING_DIR.mkdir(parents=True, exist_ok=True)
+
+    LOG_FILE = EMBEDDING_DIR / "embedding_log.txt"
+    OUTPUT_FILE = EMBEDDING_DIR / "x_embeddings_56.pt"
+
+    NUM_SEQUENCES = 56
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     DTYPE = "float32"
-    MODEL_NAME = "esmc_300m"
-    OUTPUT_FILE = "x_embeddings_100.pt"
-    # ===================================
+    MODEL_NAME = "esmc_600m"
 
     # Initialize log
-    log_path = Path(LOG_FILE)
-    log_path.write_text("🧬 ESMC Embedding Log\n\n")
+    LOG_FILE.write_text("🧬 ESMC Embedding Log\n\n")
 
     def log(msg):
         with open(LOG_FILE, "a") as f:
@@ -84,14 +77,12 @@ if __name__ == "__main__":
 
     # Start timing
     start_time = time.time()
-
-    # Embed with per-sequence tracking
     log(f"Using model: {MODEL_NAME} | device: {DEVICE} | dtype: {DTYPE}")
     log("Embedding sequences...\n")
 
     embeddings = []
     for i in tqdm(range(num_seqs), desc="Embedding sequences", unit="seq"):
-        seq_tensor = x_categorical[i].unsqueeze(0)  # Shape: [1, L]
+        seq_tensor = x_categorical[i].unsqueeze(0)  # [1, L]
         start_seq_time = time.time()
 
         emb = embed_sequences(
@@ -100,13 +91,13 @@ if __name__ == "__main__":
             device=DEVICE,
             dtype=DTYPE,
         )
-        embeddings.append(emb[0])  # Append [D] vector
+        embeddings.append(emb[0])  # [D]
 
         elapsed_seq = time.time() - start_seq_time
         log(f"[{i+1}/{num_seqs}] Embedded in {elapsed_seq:.4f} seconds")
 
     # Stack and save
-    embedding_tensor = torch.stack(embeddings)
+    embedding_tensor = torch.stack(embeddings)  # [100, D]
     torch.save(embedding_tensor, OUTPUT_FILE)
 
     # Final timing

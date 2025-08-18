@@ -167,22 +167,61 @@ train_loader = get_balanced_dataloader_from_encoded(
     samples_per_bin=100,
     batch_size=512
 )
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
-for batch_idx, (x_batch, y_batch, sp_batch) in enumerate(train_loader):
-    # Count total samples per species
-    species_counts = Counter(sp_batch.tolist())
-    
-    # Initialize per-species label distribution
-    label_dist = defaultdict(lambda: {0: 0, 1: 0})
+# === Constants ===
+AMINO_ACIDS = "ACDEFGHIKLMNPQRSTVWY"
+vocab_size = len(AMINO_ACIDS) + 1  # +1 for unknown
+num_species = len(set(species_idx.tolist()))
+seq_len = X_all.shape[1]
+input_dim = seq_len * vocab_size + num_species
+# === One-hot function for amino acid sequences ===
+def one_hot_encode_x(x_batch):
+    x_batch[x_batch >= vocab_size] = vocab_size - 1  # cap to valid range
+    x_onehot = F.one_hot(x_batch, num_classes=vocab_size).float()
+    return x_onehot.view(x_batch.size(0), -1)  # Flatten
 
-    for label, species in zip(y_batch.tolist(), sp_batch.tolist()):
-        label = int(label)
-        label_dist[species][label] += 1
+# === One-hot function for species ===
+def one_hot_encode_species(sp_batch):
+    return F.one_hot(sp_batch, num_classes=num_species).float()
 
-    # Print per-species results
-    for species in sorted(species_counts.keys()):
-        total = species_counts[species]
-        zeros = label_dist[species][0]
-        ones = label_dist[species][1]
-        print(f"  Species {species}: {total} samples | 0s: {zeros}, 1s: {ones}")
-    break
+# === Model ===
+class LogisticModel(nn.Module):
+    def __init__(self, input_dim):
+        super().__init__()
+        self.fc = nn.Linear(input_dim, 1)
+
+    def forward(self, x):
+        return self.fc(x).squeeze(1)
+
+# === Initialize Model ===
+model = LogisticModel(input_dim)
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+criterion = nn.BCEWithLogitsLoss()
+
+# === Training Loop (1 epoch example) ===
+model.train()
+for epoch in range(50):  # Just one epoch for demonstration
+    print(f"Epoch {epoch + 1}")
+    for batch_idx, (x_batch, y_batch, sp_batch) in enumerate(train_loader):
+        x_batch = x_batch.long()
+        sp_batch = sp_batch.long()
+        x_onehot = one_hot_encode_x(x_batch)
+        sp_onehot = one_hot_encode_species(sp_batch)
+
+        # Concatenate
+        x_input = torch.cat([x_onehot, sp_onehot], dim=1)  # [B, input_dim]
+
+        # Forward pass
+        logits = model(x_input)
+        loss = criterion(logits, y_batch.float().squeeze())
+
+        # Backpropagation
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        print(f"🔁 Batch {batch_idx+1} | Loss: {loss.item():.4f}")
